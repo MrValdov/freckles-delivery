@@ -1,0 +1,436 @@
+@import url("https://fonts.googleapis.com/css2?family=Architects+Daughter:wght@100;200;300;400;500;600;700;800;900&display=swap");
+@import url('https://fonts.googleapis.com/css2?family=Lobster&display=swap');
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+
+/* Global reset (no global text centering) */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  scroll-behavior: smooth;
+}
+
+/* Local webfont (optional fallback to Google import above) */
+@font-face {
+  font-family: "Architects Daughter";
+  src: url("Architects+Daughter.woff2") format("woff2");
+  font-display: swap;
+}
+
+html { scrollbar-gutter: stable overlay; }
+
+body {
+  user-select: none;
+  -webkit-user-drag: none;
+  background-color: #ffffff;
+  font-family: "Architects Daughter", sans-serif;
+  /* Push content below banner + navbar (80px desktop / 65px mobile) */
+  padding-top: calc(var(--banner-h, 0px) + 80px);
+}
+
+/* ==== Notice Bar (scoped) — safe, no global overrides ==== */
+/* Compact banner */
+.shipping-banner {
+  position: fixed;
+  top: 0; left: 0; width: 100%;
+  display: flex; gap: 10px; align-items: center; justify-content: center;
+  background: #a66; color: #fff; z-index: 1100;
+  padding: 6px 10px; font-size: 13px; line-height: 1.25;
+  isolation: isolate;
+}
+
+/* Delivery link + Shipping trigger (scoped) */
+.shipping-banner .banner-link,
+.shipping-banner .banner-popover-trigger {
+  background: #fff;
+  color: #a66;
+  border: 0;
+  border-radius: 14px;
+  padding: 4px 10px;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: none;
+  font-family: inherit;
+}
+.shipping-banner .banner-popover-trigger { border: 2px solid #fff; }
+.shipping-banner .banner-link:hover,
+.shipping-banner .banner-popover-trigger:hover { opacity: 0.9; }
+
+/* Floating popover */
+#ship-popover.banner-popover {
+  position: fixed; /* positioned by JS near the trigger */
+  max-width: min(92vw, 520px);
+  background: #fff; color: #333;
+  border: 2px solid #a66; border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.18);
+  padding: 10px 12px; z-index: 1200;
+}
+
+/* Respect hidden attribute */
+#ship-popover.banner-popover[hidden] { display: none !important; }
+
+/* Screen-reader-only helper (scoped) */
+.shipping-banner .sr-only {
+  position: absolute !important;
+  width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+@media (max-width: 768px) {
+  .shipping-banner { font-size: 12px; padding: 5px 8px; }
+  body { padding-top: calc(var(--banner-h, 0px) + 65px); }
+}
+
+/* --- Section Layout & Fade-in Animation --- */
+section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  opacity: 0;
+  transform: translateY(30px);
+  transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+}
+section.visible { opacity: 1; transform: translateY(0); }
+
+h2, p, ul { justify-self: center; }
+ul { list-style-type: none; padding: 0; }
+li { margin: 5px 0; }
+
+a:link, a:visited { color: rgb(104, 87, 87); background-color: transparent; text-decoration: none; }
+a:hover, a:active { color: rgb(41, 168, 168); text-decoration: underline; }
+
+/* --- Fixed Navigation Bar (offset by banner height) --- */
+.navbar {
+  position: fixed;
+  top: var(--banner-h, 0px); /* sits below banner */
+  left: 0;
+  width: 100%;
+  background: #f5dada;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 20px;
+  z-index: 1000;
+  flex-wrap: wrap;
+  transition: background-color 0.4s ease, box-shadow 0.4s ease;
+  box-shadow: none;
+}
+.navbar.scrolled { background: #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+
+.nav-placeholder { display: inline-block; width: 80px; }
+.navbar .logo img { height: 45px; }
+
+/* --- Main Logo in Body --- */
+.main { text-align: center; }
+.main img { height: 150px; width: auto; margin-bottom: 1px; }
+.main h2 {
+  font-family: 'Lobster', cursive;
+  font-size: 45px;
+  color: #000000;
+  text-shadow:
+    -5px -5px 0 white,  5px -5px 0 white,
+    -5px  5px 0 white,  5px  5px 0 white,
+     0px -5px 0 white,  0px  5px 0 white,
+    -5px  0px 0 white,  5px  0px 0 white;
+}
+.reg-symbol { font-size: 0.4em; vertical-align: super; margin-left: 5px; }
+
+/* --- Navigation Links --- */
+.nav-links {
+  display: flex; gap: 15px; flex-wrap: wrap;
+  justify-content: center; flex: 1;
+}
+.nav-links a {
+  text-decoration: none; color: rgb(104, 87, 87);
+  font-weight: 500; transition: color 0.3s;
+}
+.nav-links a:hover { color: rgb(41, 168, 168); text-decoration: underline; }
+.nav-links a.active { color: rgb(41, 168, 168); text-decoration: underline; }
+
+/* Language Selector Styling */
+.language-selector { display: flex; gap: 5px; margin-right: 35px; }
+.language-selector button {
+  background: #fff; border: 2px solid #a66; color: #a66;
+  padding: 5px 10px; cursor: pointer; border-radius: 20px;
+  font-family: "Architects Daughter", sans-serif;
+  font-size: 14px; transition: background 0.3s ease, color 0.3s ease;
+}
+.language-selector button:hover,
+.language-selector button.active { background: #a66; color: #fff; }
+
+/* --- Hamburger Menu (Mobile) --- */
+.hamburger { display: none; font-size: 28px; cursor: pointer; margin-right: 25px; }
+
+/* =========================
+   Reviews Marquee
+   ========================= */
+#reviews { width: 100%; padding-top: 10px; }
+#reviews h2 { margin-bottom: 16px; font-size: 32px; color: #000; }
+.reviews-marquee {
+  --gap: clamp(24px, 6vw, 64px);
+  --speed: 36;
+  overflow: hidden; width: 100%;
+}
+.reviews-track {
+  display: flex; align-items: stretch; gap: var(--gap);
+  will-change: transform; animation: reviews-scroll linear infinite;
+}
+.reviews-marquee:hover .reviews-track { animation-play-state: paused; }
+@keyframes reviews-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(var(--scroll-end, -50%)); }
+}
+.review-card {
+  flex: 0 0 auto; min-width: min(78vw, 520px); max-width: 520px;
+  background: #fff; border: 2px solid #a66; border-radius: 16px;
+  padding: 14px 16px; text-align: left; box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+}
+.review-top { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.review-avatar {
+  width: 38px; height: 38px; border-radius: 50%; background: #a66; color: #fff;
+  display: grid; place-items: center; font-weight: 800; letter-spacing: 0.5px; flex: 0 0 38px;
+}
+.review-name { font-weight: 700; color: #333; line-height: 1.1; }
+.review-stars { font-size: 14px; line-height: 1; color: #e0a800; }
+.review-comment { margin-top: 6px; color: #444; font-size: 15px; }
+
+@media (prefers-reduced-motion: reduce) { .reviews-track { animation: none !important; } }
+@media (max-width: 480px) { .review-card { min-width: 86vw; } }
+
+/* --- Gallery --- */
+.gallery-page .brand-header { padding: 0; margin-bottom: 0; }
+.gallery {
+  display: flex; flex-wrap: wrap; justify-content: center;
+  gap: 15px; max-width: 90%; margin-top: 20px;
+}
+/* always apply size + transitions everywhere */
+.gallery-item {
+  width: 180px;
+  transition: transform 0.3s ease, box-shadow 0.3s ease, opacity 0.4s ease;
+}
+
+/* only hide/animate-in on the actual gallery page */
+.gallery-page .gallery-item {
+  opacity: 0;
+  transform: translateY(20px);
+}
+.gallery-page .gallery-item.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.gallery-item:hover { transform: scale(1.05); box-shadow: 0 4px 12px rgba(0,0,0,0.2); opacity: 0.95; }
+.gallery-item img { width: 100%; height: auto; cursor: pointer; display: block; border-radius: 4px; }
+.desc { padding: 10px; font-size: 14px; text-align: center; }
+
+/* --- Lightbox Modal --- */
+.lightbox {
+  display: none; position: fixed; z-index: 2000; left: 0; top: 0;
+  width: 100%; height: 100%; background: rgba(0,0,0,0.9);
+  justify-content: center; align-items: center; flex-direction: column;
+}
+.lightbox img {
+  max-width: 90%; max-height: 80%; margin-bottom: 15px;
+  border-radius: 4px; opacity: 1; transition: opacity 0.4s ease;
+}
+.lightbox .close {
+  position: absolute; top: 20px; right: 35px; color: #fff;
+  font-size: 40px; cursor: pointer;
+}
+.lightbox .prev, .lightbox .next {
+  cursor: pointer; position: absolute; top: 50%; padding: 16px;
+  color: white; font-weight: bold; font-size: 30px; transition: 0.3s; user-select: none;
+}
+.prev { left: 10px; } .next { right: 10px; }
+#caption { color: #ccc; margin-top: 10px; font-size: 18px; text-align: center; }
+
+/* --- Responsive Design --- */
+@media screen and (max-width: 768px) {
+  .main h2 {
+    font-size: 34px;
+    text-shadow:
+      -2px -2px 0 white,  2px -2px 0 white,
+      -2px  2px 0 white,  2px  2px 0 white;
+  }
+  .nav-links {
+    display: none; flex-direction: column; align-items: center; position: absolute;
+    top: 60px; left: 0; width: 100%; background: #fff;
+    padding: 10px 0; border-top: 1px solid #ccc;
+  }
+  .nav-links.active { display: flex; }
+  .hamburger { display: block; }
+
+  /* safer placement; avoids overlapping the hamburger */
+  .language-selector {
+    position: static; margin: 8px 0 0 0;
+    align-self: flex-end; display: flex; gap: 6px;
+  }
+  .language-selector button { padding: 4px 8px; font-size: 12px; }
+
+  .gallery { gap: 12px; }
+  .gallery-item { width: calc(50% - 12px); }
+  .lightbox img { max-width: 95%; max-height: 70%; }
+}
+@media screen and (max-width: 480px) {
+  .gallery-item { width: 100%; }
+  .lightbox img { max-width: 95%; max-height: 60%; }
+}
+
+/* Filter Buttons */
+.filter-buttons {
+  display: flex; gap: 10px; justify-content: center;
+  margin-bottom: 20px; flex-wrap: wrap;
+}
+.filter-btn {
+  font-family: "Architects Daughter", sans-serif;
+  background: #fff; border: 2px solid #a66; color: #a66;
+  padding: 8px 15px; cursor: pointer; border-radius: 20px;
+  transition: all 0.3s ease; font-weight: bold;
+}
+.filter-btn.active, .filter-btn:hover { background: #a66; color: #fff; }
+
+/* --- Footer --- */
+.footer {
+  background-color: #f5dada; text-align: center; padding: 15px;
+  font-size: 14px; color: #555; border-top: 1px solid #ccc; margin-top: 30px;
+}
+
+/* --- Contact Logo --- */
+.contact-logo { height: 80px; width: auto; margin: 10px 0; }
+
+/* --- Brands Section --- */
+#brands { background-color: #f5dada; padding: 40px 20px; text-align: center; }
+#brands h2 { margin-bottom: 25px; font-size: 28px; color: #000000; }
+.brands-logos {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 30px;
+}
+.brands-logos img {
+  max-height: 80px; max-width: 150px; object-fit: contain;
+  filter: grayscale(100%); transition: filter 0.3s ease, transform 0.3s ease;
+}
+.brands-logos img:hover { filter: grayscale(0%); transform: scale(1.05); }
+@media screen and (max-width: 768px) {
+  .brands-logos img { max-height: 60px; max-width: 120px; }
+}
+
+/* Lightbox zoom controls — always under the caption */
+.lightbox { gap: 8px; }
+.lightbox .controls {
+  position: static; transform: none; display: flex; gap: 8px;
+  z-index: 2001; margin-top: 6px; justify-content: center;
+}
+.lightbox .controls button {
+  background: #fff; border: 2px solid #a66; color: #a66;
+  padding: 6px 10px; border-radius: 16px;
+  font-family: "Architects Daughter", sans-serif;
+  font-weight: 700; cursor: pointer;
+}
+.lightbox .controls button:hover { background: #a66; color: #fff; }
+
+/* Visual hint for panning when zoomed */
+.lightbox.zoomed #lightbox-img { cursor: grab; touch-action: none; }
+.lightbox.zoomed #lightbox-img:active { cursor: grabbing; }
+
+/* Ensure transforms behave smoothly */
+#lightbox-img { will-change: transform, opacity; transition: opacity 300ms ease; }
+
+/* If IntersectionObserver is missing or blocked, don't hide content */
+.no-io section, .no-io .gallery-item { opacity: 1 !important; transform: none !important; }
+
+/* --- Delivery Calculator --- */
+.card {
+  background: #fff;
+  border: 2px solid #a66;
+  border-radius: 16px;
+  padding: 20px;
+  max-width: 720px;
+  margin: 20px auto;
+  text-align: center;
+}
+
+.card h2 {
+  margin-bottom: 10px;
+  color: #000;
+}
+
+.card .note {
+  color: #555;
+  font-size: 0.9rem;
+  margin-top: 8px;
+}
+
+.card .result {
+  margin-top: 18px;
+  display: none;
+  border-top: 1px dashed #ccc;
+  padding-top: 16px;
+}
+
+.card .stat {
+  margin-bottom: 12px;
+}
+
+.card .stat strong {
+  color: #a66;
+}
+
+.card .warn {
+  color: #b91c1c;
+  font-weight: bold;
+}
+
+.card input[type="search"] {
+  width: 100%;
+  padding: 8px;
+  border-radius: 12px; /* overrides inline 8px */
+  border: 1px solid #ccc;
+  margin: 8px 0;
+  font-family: inherit;
+}
+
+.card select {
+  width: 100%;
+  padding: 8px;
+  border-radius: 12px;
+  border: 1px solid #ccc;
+  margin: 8px 0;
+  font-family: inherit;
+  background: #fff;
+}
+
+/* =====================
+    Changes every season
+   =====================*/
+.fall-banner {
+  background: linear-gradient(135deg, #b94e2e 0%, #d97706 40%, #f59e0b 100%);
+  color: #fff;
+  text-align: center;
+  padding: 40px 20px;
+  border-radius: 20px 20px 20px 20px;
+  position: relative;
+  overflow: hidden;
+}
+.fall-banner::before,
+.fall-banner::after {
+  content: "🍂";
+  position: absolute;
+  font-size: 40px;
+  animation: fall 12s linear infinite;
+  opacity: 0.4;
+}
+.fall-banner::before { top: -10%; left: 20%; }
+.fall-banner::after  { top: -20%; right: 25%; animation-delay: 6s; }
+@keyframes fall {
+  0% { transform: translateY(0) rotate(0); }
+  100% { transform: translateY(300px) rotate(360deg); }
+}
+
+/* =====================
+    To here
+   =====================*/

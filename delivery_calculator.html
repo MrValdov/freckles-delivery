@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta http-equiv="Content-Security-Policy" content="
+    default-src 'self';
+    script-src 'self';
+    style-src 'self' https://fonts.googleapis.com;
+    font-src https://fonts.gstatic.com;
+    img-src 'self' data: blob:;
+    connect-src 'self' https://nominatim.openstreetmap.org;
+    object-src 'none';
+    base-uri 'none';
+    frame-ancestors 'none';
+    form-action 'self';
+    upgrade-insecure-requests">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>Delivery Cost Calculator – Flower Delivery from Pomona, CA | Freckles Customs</title>
+  <meta name="description" content="Estimate delivery cost from Pomona, CA. Free delivery subject to order size. Service area: Los Angeles, Orange, and San Bernardino Counties.">
+  <meta name="robots" content="index,follow">
+
+  <!-- Canonical + hreflang -->
+  <link rel="canonical" href="https://www.frecklescustoms.com/delivery_calculator.html">
+  <link rel="alternate" hreflang="en" href="https://www.frecklescustoms.com/delivery_calculator.html">
+  <link rel="alternate" hreflang="es" href="https://www.frecklescustoms.com/es/delivery_calculator.html">
+
+  <!-- Open Graph / Twitter -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Delivery Cost Calculator – Flower Delivery from Pomona, CA">
+  <meta property="og:description" content="Free delivery subject to order size. Check if your address is in our service area.">
+  <meta property="og:image" content="https://www.frecklescustoms.com/assets/logo.png">
+  <meta property="og:url" content="https://www.frecklescustoms.com/delivery_calculator.html">
+  <meta name="twitter:card" content="summary_large_image">
+
+  <!-- JSON‑LD (LocalBusiness + FAQ as separate files) -->
+  <link rel="alternate" type="application/ld+json" href="/assets/schema/localbusiness.en.json">
+  <link rel="alternate" type="application/ld+json" href="/assets/schema/faq.delivery.en.json">
+
+  <!-- Favicon + CSS -->
+  <link rel="icon" href="./assets/logo.png" type="image/png">
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Navbar -->
+  <header class="navbar">
+    <div class="logo">
+      <a href="index.html"><img src="./assets/logo.png" alt="Freckles Customs Logo"></a>
+    </div>
+    <nav class="nav-links" id="nav-links">
+      <a href="index.html">Home</a>
+      <a href="gallery.html">Gallery</a>
+    </nav>
+    <div class="language-selector">
+      <button data-lang="en">EN</button>
+      <button data-lang="es">ES</button>
+    </div>
+    <div class="hamburger" id="hamburger">&#9776;</div>
+  </header>
+
+  <section class="card">
+    <h2 data-key="delivery_title">Estimated Delivery Cost</h2>
+    <p data-key="delivery_blurb" data-key="delivery_addr_label">From our shop in <strong>Pomona</strong> to your address. First 5 miles are <strong>free</strong>.</p>
+    <form id="calcForm">
+      <label for="dest" data-key="delivery_addr_label">Your delivery address</label><br>
+      <input id="dest" name="dest" type="search" placeholder="e.g. 123 Main St, Anaheim, CA" data-i18n-attr="placeholder:delivery_addr_placeholder" required />
+      <div class="order-total">
+        <label for="orderBracket" data-key="delivery_order_label">Order total</label><br>
+        <select id="orderBracket" name="orderBracket" required>
+          <option value="lt150" data-key="delivery_order_lt150">Less than $150</option>
+          <option value="151_250" data-key="delivery_order_151_250">$151–$250 (half delivery fee)</option>
+          <option value="gt251" data-key="delivery_order_gt251">$251+ (free delivery)</option>
+        </select>
+      </div>
+      <button type="submit" class="filter-btn" data-key="delivery_calculate">Calculate</button>
+    </form>
+
+    <div id="result" class="result">
+      <div class="stat"><span data-key="delivery_distance_label"></span><!-- >Distance:<--> <strong><span id="distanceMi">—</span> miles</strong></div>
+      <div class="stat"><span data-key="delivery_cost_label"></span><!-- >Estimated Cost:<--> <strong>$<span id="cost">0.00</span></strong></div>
+      <div id="countyWarn" class="warn" style="display:none" data-key="delivery_area_warning">⚠️ We currently only deliver within Los Angeles, Orange, and San Bernardino counties.</div>
+      <p id="discountNote" class="note" style="display:none"></p>
+      <p class="note" data-key="delivery_note">Estimate only. Final price may vary due to order size or toll costs.</p>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <p>&copy; 2025 Freckles Customs. All rights reserved.</p>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
