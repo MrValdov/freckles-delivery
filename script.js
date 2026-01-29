@@ -1,0 +1,955 @@
+"use strict";
+
+/* =========================================
+   One source of truth for galleries
+   ========================================= */
+const GALLERY_CONFIG = {
+  home:     { folder: "./assets/home",     prefix: "home_",     count: 10, label: "Our Home",             className: "ourhome", pad: 0 },
+  mariana:  { folder: "./assets/mariana",  prefix: "mariana_",  count: 175, label: "Mariana's Collection", className: "bouquets", pad: 0 },
+  fiorella: { folder: "./assets/fiorella", prefix: "fiorella_", count: 13, label: "Fiorella's Gifts",     className: "gifts",    pad: 0 },
+  shinny:   { folder: "./assets/shinny",   prefix: "shinny_",   count: 19, label: "Shinny Ribbons",       className: "ribbons",  pad: 0 },
+  alvin:    { folder: "./assets/alvin",    prefix: "alvin_",    count: 11,  label: "Alvin's Apparel",      className: "apparel",  pad: 0 },
+  cool:     { folder: "./assets/cool",     prefix: "cool_",     count: 9,  label: "Cool Vinyls",          className: "cool",    pad: 0 }
+};
+
+let galleries = {}; // filename arrays per key
+
+/* =========================
+   Language Loader (Centralized)
+   ========================= */
+const languageButtons = document.querySelectorAll(".language-selector button");
+
+/* ---
+   Banner-aware layout (keeps navbar below the banner)
+--- */
+function adjustForBanner() {
+  const banner = document.querySelector(".shipping-banner");
+  const h = banner ? banner.offsetHeight : 0;
+  document.documentElement.style.setProperty("--banner-h", `${h}px`);
+}
+
+function loadLanguage(lang) {
+  const safe = ["en","es"].includes(lang) ? lang : "en";
+  fetch(`./lang/${safe}.json`)
+    .then(res => res.ok ? res.json() : {})
+    .then(translations => {
+      document.querySelectorAll("[data-key]").forEach(el => {
+        const key = el.getAttribute("data-key");
+        if (translations[key]) el.textContent = translations[key];
+      });
+      document.documentElement.setAttribute("lang", safe);
+      languageButtons.forEach(btn =>
+        btn.classList.toggle("active", btn.dataset.lang === safe)
+      );
+      localStorage.setItem("lang", safe);
+
+      // Recalculate banner offset after any i18n text change
+      adjustForBanner();
+    })
+    .catch(() => {/* fail-closed */});
+}
+
+const savedLang = localStorage.getItem("lang") || ((navigator.language||"").toLowerCase().startsWith("es") ? "es" : "en");
+loadLanguage(savedLang);
+languageButtons.forEach(btn => btn.addEventListener("click", () => loadLanguage(btn.dataset.lang)));
+
+// Keep navbar offset correct on load & resize
+window.addEventListener("load", adjustForBanner);
+window.addEventListener("resize", adjustForBanner);
+
+/* =========================
+   Optional: block right-click only in Brands section
+   ========================= */
+const brandsSection = document.getElementById("brands");
+if (brandsSection) brandsSection.addEventListener("contextmenu", e => e.preventDefault());
+
+/* =========================
+   Shipping popover (floating, dismiss on blur/escape/click-out)
+   - Assumes markup present in banner:
+     .banner-popover-trigger button, #ship-popover, and .ship-template (sr-only)
+   ========================= */
+(() => {
+  const trigger = document.querySelector(".banner-popover-trigger");
+  const pop = document.getElementById("ship-popover");
+  const template = document.querySelector(".ship-template");
+  if (!trigger || !pop || !template) return;
+
+  function buildMessageText() {
+    // The template contains translated [data-key] children already
+    // We read its textContent to produce a compact message
+    return template.textContent.trim();
+  }
+
+  function positionPopover() {
+    const r = trigger.getBoundingClientRect();
+    const margin = 8;
+    // Because popover is position:fixed, viewport coords are correct
+    // Place below trigger; clamp to viewport
+    pop.style.visibility = "hidden";
+    pop.hidden = false; // temporarily unhide to measure width/height
+    const popW = pop.offsetWidth;
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - popW - 8));
+    const top = r.bottom + margin;
+    pop.style.left = `${left}px`;
+    pop.style.top = `${top}px`;
+    pop.style.visibility = "";
+  }
+
+  function openPopover() {
+    pop.textContent = ""; // reset
+    const span = document.createElement("span");
+    span.textContent = buildMessageText();
+    pop.appendChild(span);
+
+    pop.hidden = false;
+    trigger.setAttribute("aria-expanded", "true");
+    positionPopover();
+
+    // Move focus to popover for accessibility if desired:
+    // pop.setAttribute("tabindex", "-1"); pop.focus();
+  }
+
+  function closePopover() {
+    if (pop.hidden) return;
+    pop.hidden = true;
+    trigger.setAttribute("aria-expanded", "false");
+  }
+
+  // Toggle on click
+  trigger.addEventListener("click", (e) => {
+    e.preventDefault();
+    pop.hidden ? openPopover() : closePopover();
+  });
+
+  // Dismiss on outside click
+  document.addEventListener("click", (e) => {
+    if (pop.hidden) return;
+    const within = e.target === pop || pop.contains(e.target) || e.target === trigger;
+    if (!within) closePopover();
+  });
+
+  // Dismiss on Escape
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closePopover();
+  });
+
+  // Dismiss when trigger loses focus and the new focus isn't inside the popover
+  trigger.addEventListener("blur", () => {
+    // Slight delay to allow click inside popover to count as "inside"
+    setTimeout(() => {
+      if (pop.hidden) return;
+      const active = document.activeElement;
+      const stillWithin = active === trigger || pop.contains(active);
+      if (!stillWithin) closePopover();
+    }, 0);
+  });
+
+  // Reposition while visible
+  window.addEventListener("resize", () => { if (!pop.hidden) positionPopover(); });
+  window.addEventListener("scroll",  () => { if (!pop.hidden) positionPopover(); });
+
+  // Keep banner offset correct when the page language changes elsewhere
+  const mo = new MutationObserver(() => adjustForBanner());
+  mo.observe(document.documentElement, { attributes: true, attributeFilter: ["lang"] });
+})();
+
+/* =========================
+   Reviews — i18n-driven marquee (robust)
+   ========================= */
+
+// Utilities
+function getInitials(name = "") {
+  const parts = name.trim().split(/\s+/);
+  if (!parts.length) return "??";
+  const first = parts[0][0] || "";
+  const last  = parts.length > 1 ? parts[parts.length - 1][0] : "";
+  return (first + (last || "")).toUpperCase();
+}
+function getFirstWithInitial(name = "") {
+  const parts = name.trim().split(/\s+/);
+  if (!parts.length) return "";
+  const first = parts[0];
+  const lastInitial = parts.length > 1 ? `${parts[parts.length - 1][0].toUpperCase()}.` : "";
+  return `${first} ${lastInitial}`.trim();
+}
+function buildStars(rating = 0) {
+  const r = Math.max(0, Math.min(5, Math.round(rating)));
+  const span = document.createElement("span");
+  span.className = "review-stars";
+  span.setAttribute("aria-label", `${r} out of 5 stars`);
+  span.textContent = "★★★★★".slice(0, r) + "☆☆☆☆☆".slice(0, 5 - r);
+  return span;
+}
+
+function renderReviewsFromTranslations(translations) {
+  const track = document.getElementById("reviews-track");
+  const marquee = track && track.closest(".reviews-marquee");
+  const section = document.getElementById("reviews");
+  if (!track || !marquee || !section) return;
+
+  track.innerHTML = "";
+  track.style.animationDuration = "";
+  track.style.setProperty("--scroll-end", "");
+
+  const reviews = Array.isArray(translations?.reviews) ? translations.reviews : [];
+  if (!reviews.length) { section.style.display = "none"; return; }
+  section.style.display = "";
+
+  const pass = document.createDocumentFragment();
+  reviews.forEach(r => {
+    const card = document.createElement("article");
+    card.className = "review-card";
+    card.setAttribute("role", "listitem");
+
+    const top = document.createElement("div");
+    top.className = "review-top";
+
+    const avatar = document.createElement("div");
+    avatar.className = "review-avatar";
+    avatar.textContent = getInitials(r.name);
+
+    const name = document.createElement("div");
+    name.className = "review-name";
+    name.textContent = getFirstWithInitial(r.name);
+
+    const stars = buildStars(r.rating);
+
+    const meta = document.createElement("div");
+    meta.append(name, stars);
+
+    const comment = document.createElement("p");
+    comment.className = "review-comment";
+    comment.textContent = r.comment;
+
+    top.append(avatar, meta);
+    card.append(top, comment);
+    pass.append(card);
+  });
+
+  // duplicate a full pass for seamless loop
+  track.append(pass.cloneNode(true));
+  track.append(pass.cloneNode(true));
+
+  requestAnimationFrame(() => {
+    const firstPassChildren = Array.from(track.children).slice(0, reviews.length);
+    const totalWidth = firstPassChildren.reduce((sum, el) => sum + el.getBoundingClientRect().width, 0);
+    const gapPx = parseFloat(getComputedStyle(track).gap) || 0;
+    const passWidth = totalWidth + gapPx * Math.max(0, reviews.length - 1);
+
+    track.style.setProperty("--scroll-end", `-${passWidth}px`);
+
+    const speed = parseFloat(getComputedStyle(marquee).getPropertyValue("--speed")) || 36; // px/s
+    const durationSec = Math.max(6, passWidth / speed);
+    track.style.animationDuration = `${durationSec}s`;
+  });
+}
+
+// Fetch & render for a given lang code
+function fetchAndRenderReviews(lang) {
+  const safe = ["en","es"].includes((lang||"").toLowerCase()) ? lang : "en";
+  fetch(`./lang/${safe}.json`)
+    .then(r => r.ok ? r.json() : {})
+    .then(json => renderReviewsFromTranslations(json))
+    .catch(() => {});
+}
+
+// Initial render (current lang or saved fallback)
+const initialLang = document.documentElement.getAttribute("lang")
+  || localStorage.getItem("lang")
+  || "en";
+fetchAndRenderReviews(initialLang);
+
+// Re-render when <html lang="..."> changes (language switch)
+new MutationObserver(() => {
+  const lang = document.documentElement.getAttribute("lang") || "en";
+  fetchAndRenderReviews(lang);
+  // Ensure banner/body offsets are still correct after language switch
+  adjustForBanner();
+}).observe(document.documentElement, { attributes: true, attributeFilter: ["lang"] });
+
+// Keep constant speed on resize (and keep banner offset right too)
+window.addEventListener("resize", () => {
+  const lang = document.documentElement.getAttribute("lang") || "en";
+  fetchAndRenderReviews(lang);
+  adjustForBanner();
+});
+
+/* =========================
+   Page detection & helpers
+   ========================= */
+const IS_GALLERY_PAGE = document.body.classList.contains("gallery-page");
+if (IS_GALLERY_PAGE) {
+  // Apply filter from URL if present, e.g. gallery.html?filter=gifts
+  const params = new URLSearchParams(window.location.search);
+  const initialFilter = params.get("filter");
+  if (initialFilter) {
+    const btn = document.querySelector(`.filter-btn[data-filter="${initialFilter}"]`);
+    if (btn) btn.click();
+  }
+
+  // Keep the fade‑in you already have
+  document.querySelectorAll('.brand-header, #gallery-page')
+    .forEach(s => s.classList.add('visible'));
+}
+
+if (IS_GALLERY_PAGE) {
+  document.querySelectorAll('.brand-header, #gallery-page')
+    .forEach(s => s.classList.add('visible'));
+}
+
+function buildBases(prefix, count, pad = 0, start = 1) {
+  return Array.from({ length: count }, (_, i) =>
+    `${prefix}${String(i + start).padStart(pad, "0")}`
+  ).reverse(); //Addded .reverse to display the latest images first.
+}
+
+/* =========================
+   Fade-in animations (with mobile-safe fallback)
+   ========================= */
+const SUPPORTS_IO = "IntersectionObserver" in window;
+
+let sectionObserver = null;
+let galleryIO = null;
+
+if (SUPPORTS_IO) {
+  sectionObserver = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) entry.target.classList.add("visible");
+    });
+  }, { threshold: 0.08, rootMargin: "120px 0px" });
+
+  document.querySelectorAll("section").forEach(s => sectionObserver.observe(s));
+
+  galleryIO = new IntersectionObserver(entries => {
+    entries.forEach((entry, idx) => {
+      if (entry.isIntersecting) {
+        setTimeout(() => entry.target.classList.add("visible"), idx * 80);
+        galleryIO.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.08, rootMargin: "140px 0px" });
+} else {
+  // Fallback: reveal everything immediately so nothing is invisible
+  document.documentElement.classList.add("no-io");
+  document.querySelectorAll("section").forEach(s => s.classList.add("visible"));
+}
+
+function observeNewGalleryItems(root = document) {
+  const items = root.querySelectorAll(".gallery-item");
+  if (SUPPORTS_IO && galleryIO) {
+    items.forEach(item => galleryIO.observe(item));
+  } else {
+    items.forEach(item => item.classList.add("visible")); // ensure thumbnails show
+  }
+}
+
+// If no section became visible soon after load, reveal them
+window.addEventListener('load', () => {
+  setTimeout(() => {
+    if (!document.querySelector('section.visible')) {
+      document.querySelectorAll('section').forEach(s => s.classList.add('visible'));
+    }
+  }, 700);
+});
+
+/* =========================
+   Build the galleries map from config (both pages)
+   ========================= */
+galleries = Object.fromEntries(
+  Object.entries(GALLERY_CONFIG).map(([key, cfg]) => [key, buildBases(cfg.prefix, cfg.count, cfg.pad)])
+);
+
+/* =========================
+   Render tiles on the gallery page only
+   ========================= */
+if (IS_GALLERY_PAGE) {
+  const container = document.querySelector(".gallery");
+  if (container) {
+    const frag = document.createDocumentFragment();
+    for (const [key, cfg] of Object.entries(GALLERY_CONFIG)) {
+      const bases = galleries[key];
+      bases.forEach(base => {
+        const item = document.createElement("div");
+        item.className = `gallery-item ${cfg.className}`;
+
+        const img = document.createElement("img");
+        img.loading = "lazy";
+        img.src = `${cfg.folder}/thumbnails/${base}.webp`;
+        img.alt = cfg.label;
+        img.dataset.gallery = key;
+
+        img.addEventListener("load", () => item.classList.add("visible"));
+        img.addEventListener("error", () => item.remove());
+
+        const desc = document.createElement("div");
+        desc.className = "desc";
+        desc.textContent = cfg.label;
+
+        item.append(img, desc);
+        frag.appendChild(item);
+      });
+    }
+    container.appendChild(frag);
+    observeNewGalleryItems(container);
+
+    // Filter buttons
+    const filterButtons = document.querySelectorAll(".filter-btn");
+    if (filterButtons.length) {
+      const itemsAll = () => container.querySelectorAll(".gallery-item");
+
+      // Reusable filter applier
+      function applyFilter(category) {
+        filterButtons.forEach(b => b.classList.toggle("active", b.dataset.filter === category));
+        itemsAll().forEach(item => {
+          item.style.display = (category === "all" || item.classList.contains(category)) ? "block" : "none";
+        });
+      }
+
+      // Click handlers
+      filterButtons.forEach(btn => {
+        btn.addEventListener("click", () => applyFilter(btn.dataset.filter));
+      });
+
+      // Apply initial filter from URL AFTER handlers are ready
+      const initial = new URLSearchParams(window.location.search).get("filter");
+      const hasBtn = initial && document.querySelector(`.filter-btn[data-filter="${initial}"]`);
+      if (hasBtn) {
+        applyFilter(initial);
+        // Optional: clean the URL so refresh keeps current view without ?filter
+        // history.replaceState(null, "", location.pathname);
+      } else {
+        applyFilter("all");
+      }
+    }
+  }
+}
+
+
+/* =========================
+   Lightbox (shared)
+   - Loads FULL category from GALLERY_CONFIG for ANY page
+   - Starts on the image that was clicked
+   - Adds zoom controls + pan
+   - FIX: Do not trigger swipe navigation when panning a zoomed image
+   ========================= */
+const lightbox = document.getElementById("lightbox");
+const lightboxImg = document.getElementById("lightbox-img");
+const caption = document.getElementById("caption");
+const closeBtn = document.querySelector(".lightbox .close");
+const prevBtn = document.querySelector(".prev");
+const nextBtn = document.querySelector(".next");
+
+let currentIndex = 0;
+let categoryImages = [];
+let currentGalleryTitle = "";
+
+// --- Zoom/Pan state ---
+let scale = 1, posX = 0, posY = 0;
+const ZOOM_STEP = 0.25;
+const MIN_SCALE = 1;
+const MAX_SCALE = 4;
+
+// --- Swipe vs Pan arbitration ---
+let swipeStartX = 0;
+let swipeActive = false;
+let panActive = false;        // true while finger is panning the zoomed image
+let panMoved = false;         // becomes true after a small movement threshold
+const PAN_MOVE_THRESHOLD = 6; // px; distinguish tap from pan
+
+// Inject zoom toolbar if missing
+function ensureZoomControls() {
+  if (!lightbox) return;
+  if (lightbox.querySelector(".controls")) return;
+
+  const controls = document.createElement("div");
+  controls.className = "controls";
+  controls.setAttribute("role", "toolbar");
+  controls.setAttribute("aria-label", "Image zoom controls");
+
+  const btnIn = document.createElement("button");
+  btnIn.className = "zoom-in";
+  btnIn.type = "button";
+  btnIn.setAttribute("aria-label", "Zoom in");
+  btnIn.textContent = "＋";
+
+  const btnOut = document.createElement("button");
+  btnOut.className = "zoom-out";
+  btnOut.type = "button";
+  btnOut.setAttribute("aria-label", "Zoom out");
+  btnOut.textContent = "－";
+
+  const btnReset = document.createElement("button");
+  btnReset.className = "zoom-reset";
+  btnReset.type = "button";
+  btnReset.setAttribute("aria-label", "Reset zoom");
+  btnReset.textContent = "100%";
+
+  controls.append(btnIn, btnOut, btnReset);
+
+  const captionEl = lightbox.querySelector("#caption");
+  if (captionEl && nextBtn) {
+    lightbox.insertBefore(controls, nextBtn);
+  } else {
+    lightbox.appendChild(controls);
+  }
+}
+
+function applyTransform() {
+  if (!lightboxImg) return;
+  lightboxImg.style.transform = `translate(${posX}px, ${posY}px) scale(${scale})`;
+  lightbox && lightbox.classList.toggle("zoomed", scale > 1);
+}
+
+function resetZoom() {
+  scale = 1;
+  posX = 0;
+  posY = 0;
+  applyTransform();
+}
+
+function zoomBy(delta) {
+  const prev = scale;
+  scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, +(scale + delta).toFixed(2)));
+  if (scale === 1 && prev !== 1) { posX = 0; posY = 0; }
+  applyTransform();
+}
+
+if (lightbox && lightboxImg && caption && closeBtn && prevBtn && nextBtn) {
+  ensureZoomControls();
+
+  // Wire click on any gallery image to open full category
+  document.addEventListener("click", e => {
+    const img = e.target.closest(".gallery .gallery-item img");
+    if (!img) return;
+
+    const galleryName = img.dataset.gallery;
+    const cfg = GALLERY_CONFIG[galleryName];
+    const bases = galleries[galleryName] || [];
+    if (!cfg || !bases.length) return;
+
+    categoryImages = bases.map(base => ({
+      src: `${cfg.folder}/${base}.jpg`,
+      alt: cfg.label
+    }));
+    currentGalleryTitle = cfg.label;
+
+    const clickedSrc = img.getAttribute("src") || "";
+    const clickedBase = clickedSrc.split("/").pop().replace(/\.(webp|jpg)$/i, "");
+    const idx = bases.indexOf(clickedBase);
+    currentIndex = idx >= 0 ? idx : 0;
+
+    openLightbox();
+  });
+
+  function openLightbox() {
+    lightbox.style.display = "flex";
+    updateLightbox();
+    closeBtn.focus();
+  }
+
+  function updateLightbox() {
+    resetZoom();
+
+    (async () => {
+      lightboxImg.style.opacity = 0;
+      const newSrc = categoryImages[currentIndex].src;
+
+      // Preload/decode before swap
+      const tmp = new Image();
+      tmp.src = newSrc;
+      try {
+        if (tmp.decode) {
+          await tmp.decode();
+        } else {
+          await new Promise(res => tmp.complete ? res() : tmp.addEventListener("load", res, { once: true }));
+        }
+      } catch(_) {}
+
+      lightboxImg.src = newSrc;
+      lightboxImg.alt = currentGalleryTitle;
+      caption.innerText = `${currentGalleryTitle} (${currentIndex + 1}/${categoryImages.length})`;
+      requestAnimationFrame(() => { lightboxImg.style.opacity = 1; });
+    })();
+  }
+
+  function changeImage(step) {
+    currentIndex = (currentIndex + step + categoryImages.length) % categoryImages.length;
+    updateLightbox();
+  }
+
+  prevBtn.addEventListener("click", () => changeImage(-1));
+  nextBtn.addEventListener("click", () => changeImage(1));
+
+  closeBtn.addEventListener("click", () => (lightbox.style.display = "none"));
+  window.addEventListener("click", e => { if (e.target === lightbox) lightbox.style.display = "none"; });
+  window.addEventListener("keydown", e => {
+    if (e.key === "Escape") lightbox.style.display = "none";
+    if (e.key === "ArrowRight") changeImage(1);
+    if (e.key === "ArrowLeft") changeImage(-1);
+  });
+
+  // ---------------------------
+  // Swipe (mobile): image navigation
+  //   - Only when NOT zoomed (scale === 1) AND not panning
+  // ---------------------------
+  lightbox.addEventListener("touchstart", e => {
+    if (scale > 1) { swipeActive = false; return; } // disable swipe when zoomed
+    swipeActive = true;
+    swipeStartX = e.changedTouches[0].screenX;
+  }, { passive: true });
+
+  lightbox.addEventListener("touchend", e => {
+    if (!swipeActive || scale > 1 || panActive || panMoved) {
+      // Reset flags and skip swipe navigation if a pan just happened or we're zoomed
+      swipeActive = false;
+      panActive = false;
+      panMoved = false;
+      return;
+    }
+    const dx = e.changedTouches[0].screenX - swipeStartX;
+    const SWIPE = 50;
+    if (dx < -SWIPE) changeImage(1);
+    if (dx >  SWIPE) changeImage(-1);
+    swipeActive = false;
+  }, { passive: true });
+
+  // --- Zoom controls & pan ---
+  const zoomInBtn  = lightbox.querySelector(".zoom-in");
+  const zoomOutBtn = lightbox.querySelector(".zoom-out");
+  const zoomResetBtn = lightbox.querySelector(".zoom-reset");
+
+  if (zoomInBtn && zoomOutBtn && zoomResetBtn) {
+    zoomInBtn.addEventListener("click", () => zoomBy(+ZOOM_STEP));
+    zoomOutBtn.addEventListener("click", () => zoomBy(-ZOOM_STEP));
+    zoomResetBtn.addEventListener("click", resetZoom);
+  }
+
+  // Double-click / double-tap toggle
+  lightboxImg.addEventListener("dblclick", (e) => {
+    e.preventDefault();
+    scale = (scale === 1 ? 2 : 1);
+    if (scale === 1) { posX = 0; posY = 0; }
+    applyTransform();
+  });
+
+  // Wheel zoom (desktop)
+  lightboxImg.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    zoomBy(e.deltaY > 0 ? -ZOOM_STEP : +ZOOM_STEP);
+  }, { passive: false });
+
+  // Drag to pan (mouse)
+  let dragging = false, lastX = 0, lastY = 0;
+  lightboxImg.addEventListener("mousedown", (e) => {
+    if (scale === 1) return;
+    dragging = true;
+    lastX = e.clientX;
+    lastY = e.clientY;
+  });
+  window.addEventListener("mousemove", (e) => {
+    if (!dragging) return;
+    const dx = e.clientX - lastX;
+    const dy = e.clientY - lastY;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    posX += dx;
+    posY += dy;
+    applyTransform();
+  });
+  window.addEventListener("mouseup", () => dragging = false);
+
+  // Touch to pan (single-finger) — **no swipe navigation when this is active**
+  let tLastX = 0, tLastY = 0;
+  lightboxImg.addEventListener("touchstart", (e) => {
+    if (scale === 1) return;
+    if (e.touches.length !== 1) return;
+    panActive = true;
+    panMoved = false;
+    tLastX = e.touches[0].clientX;
+    tLastY = e.touches[0].clientY;
+  }, { passive: true });
+
+  lightboxImg.addEventListener("touchmove", (e) => {
+    if (!panActive || scale === 1 || e.touches.length !== 1) return;
+    const x = e.touches[0].clientX;
+    const y = e.touches[0].clientY;
+    const dx = x - tLastX;
+    const dy = y - tLastY;
+    if (!panMoved && (Math.abs(dx) > PAN_MOVE_THRESHOLD || Math.abs(dy) > PAN_MOVE_THRESHOLD)) {
+      panMoved = true; // now we know it's a pan, not a tap
+    }
+    tLastX = x;
+    tLastY = y;
+    posX += dx;
+    posY += dy;
+    applyTransform();
+  }, { passive: true });
+
+  lightboxImg.addEventListener("touchend", () => {
+    // Mark pan done; swipe handler on the overlay will see panMoved and skip
+    panActive = false;
+    // keep panMoved true until the overlay touchend runs, then it resets there
+  }, { passive: true });
+
+  // Prevent native drag ghost
+  lightboxImg.addEventListener("dragstart", (e) => e.preventDefault());
+}
+
+/* =========================
+   Hamburger Menu (Mobile) + Scroll effects
+   ========================= */
+const hamburger = document.getElementById("hamburger");
+const navLinks = document.getElementById("nav-links");
+if (hamburger && navLinks) {
+  hamburger.setAttribute("aria-label", "Toggle navigation menu");
+  hamburger.setAttribute("aria-expanded", "false");
+  hamburger.setAttribute("aria-controls", "nav-links"); // link control for SRs
+  hamburger.addEventListener("click", () => {
+    const isActive = navLinks.classList.toggle("active");
+    hamburger.setAttribute("aria-expanded", String(isActive));
+  });
+  document.querySelectorAll(".nav-links a").forEach(link => {
+    link.addEventListener("click", () => {
+      navLinks.classList.remove("active");
+      hamburger.setAttribute("aria-expanded", "false");
+    });
+  });
+}
+
+const sections = document.querySelectorAll("section");
+const navItems = document.querySelectorAll(".nav-links a");
+if (sections.length && navItems.length) {
+  window.addEventListener("scroll", () => {
+    let current = "";
+    sections.forEach(section => {
+      const sectionTop = section.offsetTop - 120;
+      const sectionHeight = section.clientHeight;
+      if (pageYOffset >= sectionTop && pageYOffset < sectionTop + sectionHeight) {
+        current = section.getAttribute("id");
+      }
+    });
+    navItems.forEach(link => {
+      link.classList.toggle("active", link.getAttribute("href") === `#${current}`);
+    });
+  });
+}
+
+const navbar = document.querySelector(".navbar");
+if (navbar) {
+  window.addEventListener("scroll", () => {
+    navbar.classList.toggle("scrolled", window.scrollY > 50);
+  });
+}
+
+
+/* =========================
+   Delivery Calculator (page-scoped)
+   ========================= */
+(function () {
+  const calcForm = document.getElementById("calcForm");
+  if (!calcForm) return; // not on delivery page
+
+  // Display hint uses “Pomona”; geocoding uses city center
+  const ORIGIN_ADDRESS = "Pomona, CA";
+
+  const $ = (s) => document.querySelector(s);
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dollars = (n) => n.toFixed(2);
+
+  function haversineMiles(a, b) {
+    const R = 3958.7613;
+    const dLat = toRad(b.lat - a.lat);
+    const dLon = toRad(b.lon - a.lon);
+    const lat1 = toRad(a.lat),
+      lat2 = toRad(b.lat);
+    const h =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+  }
+
+  function computeCost(miles) {
+    const billable = Math.max(0, Math.ceil(miles)); // $2 per mile (rounded up)
+    const rawCost = billable * 2;
+    return rawCost > 0 && rawCost < 10 ? 10 : rawCost; // enforce $10 minimum if >0
+  }
+
+  async function geocodeOSM(q) {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&addressdetails=1&q=${encodeURIComponent(
+      q
+    )}`;
+    const r = await fetch(url, { headers: { "Accept-Language": "en" } });
+    if (!r.ok) throw new Error("Geocoding failed");
+    const d = await r.json();
+    if (!d.length) throw new Error("Address not found");
+    const it = d[0];
+    const a = it.address || {};
+    return {
+      lat: +it.lat,
+      lon: +it.lon,
+      address: {
+        county: a.county || a.state_district || "",
+        state: a.state || "",
+        city: a.city || a.town || a.village || a.hamlet || "",
+      },
+    };
+  }
+
+  function isInServiceArea(addr) {
+    if (!addr) return false;
+    const stateOK = (addr.state || "").toLowerCase() === "california";
+    const county = (addr.county || "").toLowerCase();
+    const countyOK = [
+      "los angeles county",
+      "los angeles",
+      "orange county",
+      "orange",
+      "san bernardino county",
+      "san bernardino",
+    ].includes(county);
+    return stateOK && countyOK;
+  }
+
+  async function resolveDistance(dest) {
+    const [origin, target] = await Promise.all([
+      geocodeOSM(ORIGIN_ADDRESS),
+      geocodeOSM(dest),
+    ]);
+    const miles = haversineMiles(origin, target); // straight-line estimate
+    return { miles, destAddress: target.address, inArea: isInServiceArea(target.address) };
+  }
+
+  calcForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const result = $("#result");
+  if (result) result.style.display = "none";
+
+  try {
+    const dest = $("#dest").value.trim();
+    if (!dest) return;
+
+    const { miles, destAddress, inArea } = await resolveDistance(dest);
+
+    // base delivery math (you already have first 5 miles free in computeCost)
+    const baseCost = computeCost(miles);
+
+    // read the listbox value
+    const bracket = ($("#orderBracket")?.value) || "lt150";
+
+    // adjust per your rules
+    let finalCost = baseCost;
+    let note = "";
+
+    if (bracket === "151_250") {
+      finalCost = baseCost / 2;
+      note = "Half delivery fee applied for $151–$250 orders.";
+    } else if (bracket === "gt251") {
+      finalCost = 0;
+      note = "Free delivery applied for orders $251+.";
+    } // lt150 => no change
+
+    // update UI
+    $("#distanceMi").textContent = miles.toFixed(1);
+    $("#cost").textContent = finalCost.toFixed(2);
+    result.style.display = "block";
+
+    const warn = document.getElementById("countyWarn");
+    if (warn) warn.style.display = inArea ? "none" : "block";
+
+    const dn = document.getElementById("discountNote");
+    if (dn) {
+      if (note) { dn.textContent = note; dn.style.display = "block"; }
+      else { dn.textContent = ""; dn.style.display = "none"; }
+    }
+  } catch (err) {
+    alert("Could not locate that address. Please check and try again.");
+  }
+});
+})();
+
+/* =========================
+   Seasonal banner auto-loader (EN/ES aware)
+   ========================= */
+(function () {
+  const el = document.getElementById("seasons");
+  if (!el) return;
+
+  // Map months -> season
+  // Jan(0)-Feb(1): winter, Mar(2)-May(4): spring, Jun(5)-Aug(7): summer, Sep(8)-Nov(10): fall, Dec(11): winter
+  function getSeasonForMonth(m) {
+    if (m === 11 || m <= 1) return "winter";          // Dec–Feb
+    if (m >= 2 && m <= 4)  return "spring";           // Mar–May
+    if (m >= 5 && m <= 7)  return "summer";           // Jun–Aug
+    return "fall";                                     // Sep–Nov
+  }
+
+  function currentLang() {
+    // Use your existing <html lang="..."> or saved/local default
+    const attr = document.documentElement.getAttribute("lang");
+    if (attr) return attr.toLowerCase().startsWith("es") ? "es" : "en";
+    const stored = localStorage.getItem("lang");
+    if (stored) return stored;
+    return ((navigator.language || "").toLowerCase().startsWith("es")) ? "es" : "en";
+  }
+
+  async function loadJSON(url) {
+    const r = await fetch(url, { cache: "no-store" });
+    if (!r.ok) throw new Error(`Fetch failed: ${url}`);
+    return r.json();
+  }
+
+  function injectCSS(href) {
+    return new Promise((resolve, reject) => {
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = href;
+      link.onload = () => resolve();
+      link.onerror = () => reject(new Error("CSS load error: " + href));
+      document.head.appendChild(link);
+    });
+  }
+
+  async function loadSeasonAuto() {
+    const season = getSeasonForMonth(new Date().getMonth());
+    const lang = currentLang();
+
+    // 1) Load season CSS
+    try {
+      await injectCSS(`./assets/seasons/${season}.css`);
+    } catch (_) {
+      // Optional: silently ignore if missing
+    }
+
+    // 2) Load localized copy (fall-es.json -> fall-en.json)
+    let data = null;
+    const localized = `./assets/seasons/${season}-${lang}.json`;
+    const fallback  = `./assets/seasons/${season}-en.json`;
+    try {
+      data = await loadJSON(localized);
+    } catch (e1) {
+      try { data = await loadJSON(fallback); } catch (e2) {}
+    }
+    if (!data) return; // nothing to show
+
+    const titleEl = el.querySelector("#season-title");
+    const subEl   = el.querySelector(".season-subtitle");
+    const ctaEl   = el.querySelector(".season-cta");
+
+    if (titleEl) titleEl.textContent = data.title || "";
+    if (subEl)   subEl.textContent   = data.subtitle || "";
+    if (ctaEl) {
+      ctaEl.textContent = data.cta || "";
+      ctaEl.href = data.link || "#";
+    }
+  }
+
+  // Initial load
+  loadSeasonAuto();
+
+  // Re-load copy if the site language changes at runtime (your language switcher updates <html lang>)
+  new MutationObserver(() => loadSeasonAuto())
+    .observe(document.documentElement, { attributes: true, attributeFilter: ["lang"] });
+})();
+/* =====================
+    Seasons manager ends here
+   =====================*/
